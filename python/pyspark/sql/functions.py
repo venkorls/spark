@@ -21,6 +21,7 @@ A collections of builtin functions
 import math
 import sys
 import functools
+import warnings
 
 if sys.version < "3":
     from itertools import imap as map
@@ -42,6 +43,14 @@ def _create_function(name, doc=""):
     _.__name__ = name
     _.__doc__ = doc
     return _
+
+
+def _wrap_deprecated_function(func, message):
+    """ Wrap the deprecated function to print out deprecation warnings"""
+    def _(col):
+        warnings.warn(message, DeprecationWarning)
+        return func(col)
+    return functools.wraps(func)(_)
 
 
 def _create_binary_mathfunction(name, doc=""):
@@ -207,6 +216,12 @@ _window_functions = {
         """returns the relative rank (i.e. percentile) of rows within a window partition.""",
 }
 
+# Wraps deprecated functions (keys) with the messages (values).
+_functions_deprecated = {
+    'toDegrees': 'Deprecated in 2.1, use degrees instead.',
+    'toRadians': 'Deprecated in 2.1, use radians instead.',
+}
+
 for _name, _doc in _functions.items():
     globals()[_name] = since(1.3)(_create_function(_name, _doc))
 for _name, _doc in _functions_1_4.items():
@@ -219,6 +234,8 @@ for _name, _doc in _functions_1_6.items():
     globals()[_name] = since(1.6)(_create_function(_name, _doc))
 for _name, _doc in _functions_2_1.items():
     globals()[_name] = since(2.1)(_create_function(_name, _doc))
+for _name, _message in _functions_deprecated.items():
+    globals()[_name] = _wrap_deprecated_function(globals()[_name], _message)
 del _name, _doc
 
 
@@ -227,6 +244,7 @@ def approxCountDistinct(col, rsd=None):
     """
     .. note:: Deprecated in 2.1, use :func:`approx_count_distinct` instead.
     """
+    warnings.warn("Deprecated in 2.1, use approx_count_distinct instead.", DeprecationWarning)
     return approx_count_distinct(col, rsd)
 
 
@@ -867,6 +885,19 @@ def month(col):
    """
     sc = SparkContext._active_spark_context
     return Column(sc._jvm.functions.month(_to_java_column(col)))
+
+
+@since(2.3)
+def dayofweek(col):
+    """
+    Extract the day of the week of a given date as integer.
+
+    >>> df = spark.createDataFrame([('2015-04-08',)], ['dt'])
+    >>> df.select(dayofweek('dt').alias('day')).collect()
+    [Row(day=4)]
+    """
+    sc = SparkContext._active_spark_context
+    return Column(sc._jvm.functions.dayofweek(_to_java_column(col)))
 
 
 @since(1.5)
@@ -2167,6 +2198,13 @@ def udf(f=None, returnType=StringType()):
         duplicate invocations may be eliminated or the function may even be invoked more times than
         it is present in the query.
 
+    .. note:: The user-defined functions do not support conditional execution by using them with
+        SQL conditional expressions such as `when` or `if`. The functions still apply on all rows no
+        matter the conditions are met or not. So the output is correct if the functions can be
+        correctly run on all rows without failure. If the functions can cause runtime failure on the
+        rows that do not satisfy the conditions, the suggested workaround is to incorporate the
+        condition logic into the functions.
+
     :param f: python function if used as a standalone function
     :param returnType: a :class:`pyspark.sql.types.DataType` object
 
@@ -2260,6 +2298,13 @@ def pandas_udf(f=None, returnType=StringType()):
        .. seealso:: :meth:`pyspark.sql.GroupedData.apply`
 
     .. note:: The user-defined function must be deterministic.
+
+    .. note:: The user-defined functions do not support conditional execution by using them with
+        SQL conditional expressions such as `when` or `if`. The functions still apply on all rows no
+        matter the conditions are met or not. So the output is correct if the functions can be
+        correctly run on all rows without failure. If the functions can cause runtime failure on the
+        rows that do not satisfy the conditions, the suggested workaround is to incorporate the
+        condition logic into the functions.
     """
     return _create_udf(f, returnType=returnType, pythonUdfType=PythonUdfType.PANDAS_UDF)
 
